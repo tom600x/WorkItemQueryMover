@@ -34,19 +34,17 @@ namespace WorkItemQueryMover
             _apiVersion = _config["ApiVersion"];
         }
 
-        private async void  CreateIndividualQueryFolder(string parentFolderPath, string folderName)
+        private async Task<bool>  CreateIndividualQueryFolder(string parentFolderPath, string folderName)
         {
 
             if (folderName == "My Queries")
             {
-                return;
+                return true;
             }
 
             var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl +  @"/_apis/wit/queries/" + parentFolderPath + "?api-version=7.0");
 
-            //   _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
-            string basic = Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken));
-            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", "OmhlZzJ6bGVxZnh2ZjVpb3FhMmZ2YXZucHAzYWtrcTJ5aWRzemF6ZGY3YnB5YXJwbDdobGE=");
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
 
             string s = "{\r\n  \"name\" : \"" + folderName + "\",\r\n  \"isFolder\": true \r\n}";
 
@@ -56,13 +54,15 @@ namespace WorkItemQueryMover
 
                if (response.StatusCode == System.Net.HttpStatusCode.Created)
                 {
-                    Console.WriteLine("Folder created: " + parentFolderPath + "/" + folderName);
+                    await Console.Out.WriteLineAsync("Folder created: " + parentFolderPath + "/" + folderName);
+                    return true;
                 }
                 else
                 {
-                    Console.WriteLine("Error created: " + parentFolderPath + "/" + folderName );
-                    Console.WriteLine(await response.Content.ReadAsStringAsync());
-            }
+                    await Console.Out.WriteLineAsync("Error created: " + parentFolderPath + "/" + folderName );
+                    await Console.Out.WriteLineAsync(await response.Content.ReadAsStringAsync());
+                return false;
+                 }
       
  
         }
@@ -82,11 +82,11 @@ namespace WorkItemQueryMover
             return true;
 
         }
-        private async void CreateQueryOnTarget(string queryName, string queryPath, string queryWIQL)
+        private async Task<bool> CreateQueryOnTarget(string queryName, string queryPath, string queryWIQL)
         {
 
 
-            Console.WriteLine("Processing query: " + queryName);
+            await Console.Out.WriteLineAsync("Processing query: " + queryName);
             var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl +  "/_apis/wit/queries/" + queryPath + _apiVersion);
         
            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
@@ -99,20 +99,22 @@ namespace WorkItemQueryMover
 
             if (response.StatusCode == System.Net.HttpStatusCode.Created)
             {
-                Console.WriteLine("Query created: " + queryName + " in path " + queryPath);
+                await Console.Out.WriteLineAsync("Query created: " + queryName + " in path " + queryPath);
+                return true;
             }
             else
             {
-                Console.WriteLine("Error creating Query: " + queryName + " in path " + queryPath);
-                Console.WriteLine(await response.Content.ReadAsStringAsync());
+                await Console.Out.WriteLineAsync("Error creating Query: " + queryName + " in path " + queryPath);
+                await Console.Out.WriteLineAsync(await response.Content.ReadAsStringAsync());
+                return false;
             }
   
         }
 
         public async Task<bool> ProcessQueries(string id)
         {
-            
 
+ 
             var request = new HttpRequestMessage(HttpMethod.Get, _sourceUrl + "/_apis/wit/queries/" + id + "?$depth=1&$expand=minimal");
  
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _sourceToken)));
@@ -138,16 +140,16 @@ namespace WorkItemQueryMover
                     {
                         
                         if (!child.isPublic && !child.hasChildren && child.isFolder)
-                            CreateIndividualQueryFolder(item.path, child.name);
+                             await CreateIndividualQueryFolder(item.path, child.name);
                         else if (!child.isPublic && child.hasChildren && child.isFolder)
                         {
-                            Console.WriteLine("Processing Query: Id=" + child.id);
+
                             await ProcessQueries(child.id);
 
                         }
 
                         if (child.wiql != null && !child.isPublic)
-                            CreateQueryOnTarget(child.name, item.path, child.wiql);                         
+                            await CreateQueryOnTarget(child.name, item.path, child.wiql);                         
 
                     }
             
@@ -157,7 +159,7 @@ namespace WorkItemQueryMover
             }
             else
             {
-                Console.WriteLine("Error: " + response);
+                await Console.Out.WriteLineAsync("Error: " + response);
             }
 
             return true;
