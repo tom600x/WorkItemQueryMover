@@ -42,7 +42,7 @@ namespace WorkItemQueryMover
                 return true;
             }
 
-            var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl +  @"/_apis/wit/queries/" + parentFolderPath + "?api-version=7.0");
+            var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl +  @"/_apis/wit/queries/" + parentFolderPath + _apiVersion);
 
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
 
@@ -91,7 +91,12 @@ namespace WorkItemQueryMover
         
            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
  
-            string s = "{\r\n  \"name\" : \"" + queryName + "\",\r\n  \"wiql\":  \"" + queryWIQL.Replace("'" + _sourceProjectName + "'", "'" + _destinationProjectName + "'") + "\" \r\n}";
+            QueryCreate queryCreate = new QueryCreate();
+            queryCreate.name = queryName;
+            queryCreate.wiql = queryWIQL.Replace("'" + _sourceProjectName + "'", "'" + _destinationProjectName + "'");
+
+            string s = JsonSerializer.Serialize(queryCreate);
+          //  string s = "{\r\n  \"name\" : \"" + queryName + "\",\r\n  \"wiql\":  \"" + queryWIQL.Replace("'" + _sourceProjectName + "'", "'" + _destinationProjectName + "'") + "\" \r\n}";
 
             var content = new StringContent(s, null, "application/json");
             request.Content = content;
@@ -125,12 +130,26 @@ namespace WorkItemQueryMover
             {
                 
                 var responseBody = await response.Content.ReadAsStringAsync();
-                if (!responseBody.Contains(@"""count"""))
-                    responseBody =   "{\"count\":1,\"value\": [ {" + responseBody.Substring(1, (responseBody.Length) - 1) + "] }";
-                  
-             
+                //if (!responseBody.Contains(@"""count"""))
+                //    responseBody =   "{\"count\":1,\"value\": [ {" + responseBody.Substring(1, (responseBody.Length) - 1) + "] }";
 
-                ADOQueryObject? queries = JsonSerializer.Deserialize<ADOQueryObject>(responseBody);
+               
+
+
+                ADOQueryObject? queries =  new ADOQueryObject();
+                queries = JsonSerializer.Deserialize<ADOQueryObject>(responseBody);
+
+                if (queries != null)
+                {
+                    if (queries.count == 0)
+                    {
+                        queries.count = 1;
+                        queries.value = new Value[1];
+                        queries.value[0] =   JsonSerializer.Deserialize<Value>(responseBody);
+                    }
+
+                }
+
 
                 foreach (var item in queries.value)
                 {

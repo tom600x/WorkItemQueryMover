@@ -1,4 +1,4 @@
-﻿ 
+﻿
 
 namespace WorkItemQueryMover
 {
@@ -17,6 +17,7 @@ namespace WorkItemQueryMover
         public bool hasChildren { get; set; }
         public Child[] children { get; set; }
         public bool isPublic { get; set; }
+        public string url { get; set; }
     }
 
     public class Child
@@ -29,15 +30,25 @@ namespace WorkItemQueryMover
         public bool isPublic { get; set; }
         public string queryType { get; set; }
         public string wiql { get; set; }
+        public string url { get; set; }
     }
 
     public class UserToken
     {
-        public string UserName { get;set; }
-        public string SourceToken { get; set; } 
-        public string DestinationToken { get; set; } 
+        public string UserName { get; set; }
+        public string SourceToken { get; set; }
+        public string DestinationToken { get; set; }
 
     }
 
+
+    public class QueryCreate
+    {
+        public string name { get; set; }
+        public string wiql { get; set; }
+    }
+
+
+ 
 
 }
