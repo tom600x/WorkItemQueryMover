@@ -1,9 +1,9 @@
 ﻿
- 
+
+using Microsoft.Extensions.Configuration;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 
 namespace WorkItemQueryMover
 {
@@ -20,6 +20,8 @@ namespace WorkItemQueryMover
         private string _apiVersion;
 
 
+        private Dictionary<string, string?> _sourceToTargetFieldMappings { get; set; }
+
         public DevOpsQueryMover(IConfiguration config, string sourceToken, string destinationToken)
         {
             _config = config;
@@ -29,12 +31,15 @@ namespace WorkItemQueryMover
             _destinationUrl = _config["DestinationUrl"];
             _destinationToken = destinationToken;
 
-            _sourceProjectName = _config["SourceProjectName"];  
+            _sourceProjectName = _config["SourceProjectName"];
             _destinationProjectName = _config["DestinationProjectName"];
             _apiVersion = _config["ApiVersion"];
+
+            _sourceToTargetFieldMappings = _config.GetSection("SourceToTargetFieldMappings").GetChildren().ToDictionary(x => x.Key, x => x.Value);
+
         }
 
-        private async Task<bool>  CreateIndividualQueryFolder(string parentFolderPath, string folderName)
+        private async Task<bool> CreateIndividualQueryFolder(string parentFolderPath, string folderName)
         {
 
             if (folderName == "My Queries")
@@ -42,7 +47,7 @@ namespace WorkItemQueryMover
                 return true;
             }
 
-            var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl +  @"/_apis/wit/queries/" + parentFolderPath + _apiVersion);
+            var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl + @"/_apis/wit/queries/" + parentFolderPath + _apiVersion);
 
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
 
@@ -52,51 +57,56 @@ namespace WorkItemQueryMover
             request.Content = content;
             var response = await _client.SendAsync(request);
 
-               if (response.StatusCode == System.Net.HttpStatusCode.Created)
-                {
-                    await Console.Out.WriteLineAsync("Folder created: " + parentFolderPath + "/" + folderName);
-                    return true;
-                }
-                else
-                {
-                    await Console.Out.WriteLineAsync("Error created: " + parentFolderPath + "/" + folderName );
-                    await Console.Out.WriteLineAsync(await response.Content.ReadAsStringAsync());
+            if (response.StatusCode == System.Net.HttpStatusCode.Created)
+            {
+                await Console.Out.WriteLineAsync("Folder created: " + parentFolderPath + "/" + folderName);
+                return true;
+            }
+            else
+            {
+                //  await Console.Out.WriteLineAsync("Error created: " + parentFolderPath + "/" + folderName );
+                //   await Console.Out.WriteLineAsync(await response.Content.ReadAsStringAsync());
                 return false;
-                 }
-      
- 
+            }
+
+
         }
 
         private async Task<bool> CreateFolders(string path)
         {
             var pathArray = path.Split("/");
-          
+
             string parentFolderPath = "";
 
             foreach (var p in pathArray)
-            {                
+            {
                 CreateIndividualQueryFolder(parentFolderPath, p);
-                parentFolderPath = parentFolderPath + "/" + p;  
+                parentFolderPath = parentFolderPath + "/" + p;
             }
 
             return true;
 
         }
-        private async Task<bool> CreateQueryOnTarget(string queryName, string queryPath, string queryWIQL)
+        private async Task<bool> CreateQueryOnTarget(string folderPath, string queryName, string queryPath, string queryWIQL)
         {
 
-
+            await CreateFolders(folderPath);
+            await Console.Out.WriteLineAsync("");
             await Console.Out.WriteLineAsync("Processing query: " + queryName);
-            var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl +  "/_apis/wit/queries/" + queryPath + _apiVersion);
-        
-           _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
- 
+            var request = new HttpRequestMessage(HttpMethod.Post, _destinationUrl + "/_apis/wit/queries/" + queryPath + _apiVersion);
+
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _destinationToken)));
+
             QueryCreate queryCreate = new QueryCreate();
             queryCreate.name = queryName;
             queryCreate.wiql = queryWIQL.Replace("'" + _sourceProjectName + "'", "'" + _destinationProjectName + "'");
 
+            foreach (var mapping in _sourceToTargetFieldMappings)
+            {
+                queryCreate.wiql = queryCreate.wiql.Replace(mapping.Key, mapping.Value);
+            }
+
             string s = JsonSerializer.Serialize(queryCreate);
-          //  string s = "{\r\n  \"name\" : \"" + queryName + "\",\r\n  \"wiql\":  \"" + queryWIQL.Replace("'" + _sourceProjectName + "'", "'" + _destinationProjectName + "'") + "\" \r\n}";
 
             var content = new StringContent(s, null, "application/json");
             request.Content = content;
@@ -109,34 +119,29 @@ namespace WorkItemQueryMover
             }
             else
             {
-                await Console.Out.WriteLineAsync("Error creating Query: " + queryName + " in path " + queryPath);
-                await Console.Out.WriteLineAsync(await response.Content.ReadAsStringAsync());
+                await Console.Out.WriteLineAsync("Error creating Query: " + queryName + " in path " + queryPath + " query = " + queryCreate.wiql);
+                await Console.Out.WriteLineAsync("Error = " + await response.Content.ReadAsStringAsync());
                 return false;
             }
-  
+
         }
 
         public async Task<bool> ProcessQueries(string id)
         {
 
- 
+
             var request = new HttpRequestMessage(HttpMethod.Get, _sourceUrl + "/_apis/wit/queries/" + id + "?$depth=1&$expand=minimal");
- 
+
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + _sourceToken)));
 
             var response = await _client.SendAsync(request);
 
             if (response.StatusCode == System.Net.HttpStatusCode.OK)
             {
-                
+
                 var responseBody = await response.Content.ReadAsStringAsync();
-                //if (!responseBody.Contains(@"""count"""))
-                //    responseBody =   "{\"count\":1,\"value\": [ {" + responseBody.Substring(1, (responseBody.Length) - 1) + "] }";
 
-               
-
-
-                ADOQueryObject? queries =  new ADOQueryObject();
+                ADOQueryObject? queries = new ADOQueryObject();
                 queries = JsonSerializer.Deserialize<ADOQueryObject>(responseBody);
 
                 if (queries != null)
@@ -145,7 +150,7 @@ namespace WorkItemQueryMover
                     {
                         queries.count = 1;
                         queries.value = new Value[1];
-                        queries.value[0] =   JsonSerializer.Deserialize<Value>(responseBody);
+                        queries.value[0] = JsonSerializer.Deserialize<Value>(responseBody);
                     }
 
                 }
@@ -154,12 +159,12 @@ namespace WorkItemQueryMover
                 foreach (var item in queries.value)
                 {
                     await CreateFolders(item.path);
-          
-                    foreach(var child in item.children)
+
+                    foreach (var child in item.children)
                     {
-                        
+
                         if (!child.isPublic && !child.hasChildren && child.isFolder)
-                             await CreateIndividualQueryFolder(item.path, child.name);
+                            await CreateIndividualQueryFolder(item.path, child.name);
                         else if (!child.isPublic && child.hasChildren && child.isFolder)
                         {
 
@@ -168,12 +173,12 @@ namespace WorkItemQueryMover
                         }
 
                         if (child.wiql != null && !child.isPublic)
-                            await CreateQueryOnTarget(child.name, item.path, child.wiql);                         
+                            await CreateQueryOnTarget(item.path, child.name, item.path, child.wiql);
 
                     }
-            
 
-                    
+
+
                 }
             }
             else

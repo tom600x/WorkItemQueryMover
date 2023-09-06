@@ -48,7 +48,13 @@ namespace WorkItemQueryMover
         public string wiql { get; set; }
     }
 
+    public class SourceToTargetFieldMappings
+    {
+        public string sourceField { get; set; }
+        public string destinationField { get; set; }
+    }
 
- 
+
+
 
 }
